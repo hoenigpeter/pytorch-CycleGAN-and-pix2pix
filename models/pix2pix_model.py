@@ -1,7 +1,16 @@
 import torch
 from .base_model import BaseModel
 from . import networks
-
+from imgaug import augmenters as iaa
+import imgaug.augmenters as iaa  # noqa
+from imgaug.augmenters import (Sequential, SomeOf, OneOf, Sometimes, WithColorspace, WithChannels, Noop,
+                                Lambda, AssertLambda, AssertShape, Scale, CropAndPad, Pad, Crop, Fliplr,
+                                Flipud, Superpixels, ChangeColorspace, PerspectiveTransform, Grayscale,
+                                GaussianBlur, AverageBlur, MedianBlur, Convolve, Sharpen, Emboss, EdgeDetect,
+                                DirectedEdgeDetect, Add, AddElementwise, AdditiveGaussianNoise, Multiply,
+                                MultiplyElementwise, Dropout, CoarseDropout, Invert, ContrastNormalization,
+                                Affine, PiecewiseAffine, ElasticTransformation, pillike, LinearContrast)  # noqa
+import numpy as np
 
 class Pix2PixModel(BaseModel):
     """ This class implements the pix2pix model, for learning a mapping from input images to output images given paired data.
@@ -70,6 +79,58 @@ class Pix2PixModel(BaseModel):
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
+        prob = 1.0
+
+        self.seq_syn= iaa.Sequential([        
+                            Sometimes(0.5 * prob, CoarseDropout( p=0.2, size_percent=0.05) ),
+                            Sometimes(0.5 * prob, GaussianBlur(1.2*np.random.rand())),
+                            Sometimes(0.5 * prob, Add((-25, 25), per_channel=0.3)),
+                            Sometimes(0.3 * prob, Invert(0.2, per_channel=True)),
+                            Sometimes(0.5 * prob, Multiply((0.6, 1.4), per_channel=0.5)),
+                            Sometimes(0.5 * prob, Multiply((0.6, 1.4))),
+                            Sometimes(0.5 * prob, LinearContrast((0.5, 2.2), per_channel=0.3))
+                            ], random_order = False)
+
+    # def set_input(self, input):
+    #     """Unpack input data from the dataloader and perform necessary pre-processing steps.
+
+    #     Parameters:
+    #         input (dict): include the data itself and its metadata information.
+
+    #     The option 'direction' can be used to swap images in domain A and domain B.
+    #     """
+    #     AtoB = self.opt.direction == 'AtoB'
+    #     self.real_A = input['A' if AtoB else 'B'].to(self.device)
+    #     self.real_B = input['B' if AtoB else 'A'].to(self.device)
+    #     self.image_paths = input['A_paths' if AtoB else 'B_paths']
+
+    def torch_to_numpy(self, tensor):
+        """ Convert a torch tensor to a numpy array. """
+        # Move tensor to CPU and convert to numpy
+        numpy_img = tensor.cpu().numpy()
+
+        # Change range from [-1, 1] to [0, 1] and reshape
+        numpy_img = (numpy_img + 1) / 2.0
+        numpy_img = numpy_img.transpose(0, 2, 3, 1)  # Change to [1, 256, 256, 3]
+
+        # Convert to uint8
+        numpy_img = (numpy_img * 255).astype(np.uint8)
+        return numpy_img[0]  # Remove batch dimension
+
+    def numpy_to_torch(self, numpy_img):
+        """ Convert a numpy array back to a torch tensor. """
+        # Convert back to float and normalize to [-1, 1]
+        torch_img = ((numpy_img / 255.0) - 0.5) * 2.0
+
+        # Change shape from [256, 256, 3] to [3, 256, 256]
+        torch_img = torch_img.transpose(2, 0, 1)
+
+        # Convert to torch tensor
+        torch_img = torch.from_numpy(torch_img).float()
+
+        torch_img = torch.unsqueeze(torch_img, 0)
+        return torch_img
+
     def set_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
 
@@ -79,6 +140,14 @@ class Pix2PixModel(BaseModel):
         The option 'direction' can be used to swap images in domain A and domain B.
         """
         AtoB = self.opt.direction == 'AtoB'
+        real_A = input['A' if AtoB else 'B']
+        real_B = input['B' if AtoB else 'A']
+
+        # numpy_img = self.torch_to_numpy(real_A)
+        # augmented_img =  self.seq_syn.augment_image(numpy_img)
+        # augmented_tensor = self.numpy_to_torch(augmented_img)
+
+        #self.real_A = augmented_tensor.to(self.device)
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']

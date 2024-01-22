@@ -2,6 +2,7 @@
 debug*
 datasets/
 checkpoints/
+checkpoints_with_augmentation/
 results/
 build/
 dist/
