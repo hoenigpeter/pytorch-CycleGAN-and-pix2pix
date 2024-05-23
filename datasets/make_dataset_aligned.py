@@ -15,7 +15,6 @@ def get_file_paths(folder):
                 image_file_paths.append(file_path)
                 filenames_list.append(filename)
         break
-    print("done!")
     return image_file_paths, filenames_list
 
 
